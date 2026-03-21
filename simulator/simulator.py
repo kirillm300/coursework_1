@@ -45,11 +45,10 @@ post_uptime_total = Counter('carwash_post_uptime_seconds_total', 'Total uptime s
 post_total_seconds = Counter('carwash_post_total_seconds_total', 'Total seconds tracked', ['post_id'])
 
 POSTS = {
-    'post_1': {'type': 'self_service'},
-    'post_2': {'type': 'self_service'}, 
-    'post_3': {'type': 'robot'},
-    'post_4': {'type': 'robot'}
+    'post_1': {'type': 'self_service', 'brush_wear': 20.0},
+    'post_2': {'type': 'robot', 'brush_wear': 35.0}
 }
+
 
 class DatabaseManager:
     def __init__(self):
@@ -168,8 +167,10 @@ def simulate_metrics():
         
         # ========== ЗАПИСЬ В БД ==========
         # Метрики в БД (пример для нескольких типов)
-        db.log_metric(1, 1, queue_length_self._value.get())  # queue_length
-        db.log_metric(3, 2, session_duration.labels(post_id='post_3')._value.get())  # session_duration
+        # В блоке записи в БД замени:
+        db.log_metric(1, 1, queue_length_self._value.get())  # post_1
+        db.log_metric(2, 2, session_duration.labels(post_id='post_2')._value.get())  # post_2
+
         
         # Случайные инциденты
         if random.random() < 0.02:  # 2% шанс
