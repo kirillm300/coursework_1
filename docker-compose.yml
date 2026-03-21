@@ -1,3 +1,5 @@
+version: "3.9"
+
 networks:
   carwash-net:
     driver: bridge
@@ -5,6 +7,7 @@ networks:
 volumes:
   prometheus-data:
   grafana-data:
+  postgres-data:
 
 services:
 
@@ -14,6 +17,24 @@ services:
     container_name: carwash-simulator
     ports:
       - "8000:8000"
+    networks:
+      - carwash-net
+    depends_on:
+      - postgres
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16
+    container_name: carwash-postgres
+    environment:
+      POSTGRES_DB: carwash
+      POSTGRES_USER: carwash_user
+      POSTGRES_PASSWORD: carwash_pass
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     networks:
       - carwash-net
     restart: unless-stopped
@@ -41,7 +62,7 @@ services:
       - grafana-data:/var/lib/grafana
     environment:
       - GF_SECURITY_ADMIN_USER=admin
-      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin123
     networks:
       - carwash-net
     depends_on:
