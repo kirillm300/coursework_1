@@ -1,7 +1,7 @@
 import time
 import random
 import psycopg2
-from prometheus_client import start_http_server, Gauge, Counter, Histogram
+from prometheus_client import start_http_server, Gauge, Counter
 from contextlib import contextmanager
 import threading
 import atexit
@@ -40,15 +40,11 @@ mttr_seconds = Gauge('carwash_mttr_seconds', 'Mean Time To Recovery seconds')
 mtbf_hours = Gauge('carwash_mtbf_hours', 'Mean Time Between Failures hours')
 monitoring_availability = Gauge('carwash_monitoring_availability_percent', 'Monitoring system availability %')
 
-# Счётчики для расчётов
-post_uptime_total = Counter('carwash_post_uptime_seconds_total', 'Total uptime seconds', ['post_id'])
-post_total_seconds = Counter('carwash_post_total_seconds_total', 'Total seconds tracked', ['post_id'])
-
+# ========== 2 ПОСТА ==========
 POSTS = {
     'post_1': {'type': 'self_service', 'brush_wear': 20.0},
     'post_2': {'type': 'robot', 'brush_wear': 35.0}
 }
-
 
 class DatabaseManager:
     def __init__(self):
@@ -69,45 +65,52 @@ class DatabaseManager:
     
     def log_metric(self, post_id, metric_type_id, value):
         with self.lock:
-            with self.get_connection() as conn:
-                with conn.cursor() as cur:
-                    cur.execute("""
-                        INSERT INTO metric_value (post_id, metric_type_id, value) 
-                        VALUES (%s, %s, %s)
-                    """, (post_id, metric_type_id, value))
-                    conn.commit()
+            try:
+                with self.get_connection() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute("""
+                            INSERT INTO metric_value (post_id, metric_type_id, value) 
+                            VALUES (%s, %s, %s)
+                        """, (post_id, metric_type_id, value))
+                        conn.commit()
+            except Exception as e:
+                print(f"Failed to log metric: {e}")
     
     def log_incident(self, post_id, description):
         with self.lock:
-            with self.get_connection() as conn:
-                with conn.cursor() as cur:
-                    cur.execute("""
-                        INSERT INTO incident (post_id, description, started_at, status)
-                        VALUES (%s, %s, NOW(), 'open')
-                    """, (post_id, description))
-                    conn.commit()
+            try:
+                with self.get_connection() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute("""
+                            INSERT INTO incident (post_id, description, started_at, status)
+                            VALUES (%s, %s, NOW(), 'open')
+                        """, (post_id, description))
+                        conn.commit()
+            except Exception as e:
+                print(f"Failed to log incident: {e}")
 
 db = DatabaseManager()
 
 def simulate_metrics():
     """Основной цикл симуляции"""
-    last_cars_served = {pid: 0 for pid in POSTS}
     last_minute = 0
     revenue_state = 0.0
     services_count = 0
+    
+    print("🚀 Simulation started with 2 posts")
     
     while True:
         current_minute = int(time.time() // 60)
         
         # ========== ОПЕРАЦИОННЫЕ МЕТРИКИ ==========
-        # Статус постов
-        for post_id in POSTS:
+        for post_id, post_info in POSTS.items():
+            # Статус поста
             status = random.choices([0, 1, 2], weights=[40, 50, 10])[0]
             post_status.labels(post_id=post_id).set(status)
             
             # Длительность сессии
             if status == 1:  # занят
-                duration = random.randint(120, 600) if POSTS[post_id]['type'] == 'self_service' else random.randint(180, 400)
+                duration = random.randint(120, 600) if post_info['type'] == 'self_service' else random.randint(180, 400)
                 session_duration.labels(post_id=post_id).set(duration)
             else:
                 session_duration.labels(post_id=post_id).set(0)
@@ -116,12 +119,11 @@ def simulate_metrics():
         queue_length_self.set(random.randint(0, 6))
         queue_length_robot.set(random.randint(0, 4))
         
-        # Обслуженные за час
+        # Обслуженные за час (каждую минуту)
         if current_minute != last_minute:
             for post_id in POSTS:
                 current_served = random.randint(3, 12)
                 cars_served_per_hour.labels(post_id=post_id).set(current_served)
-                last_cars_served[post_id] = current_served
             last_minute = current_minute
         
         # ========== ТЕХНИЧЕСКИЕ МЕТРИКИ ==========
@@ -134,14 +136,11 @@ def simulate_metrics():
         water_pressure.set(random.uniform(100, 160))
         pump_temperature.set(random.uniform(35, 65))
         
-        # Износ щёток (только роботы)
-        for post_id in ['post_2']:  # Только роботизированный пост_2
-            wear = POSTS[post_id]['brush_wear']
-            wear += random.uniform(0.1, 0.8)
-            wear = min(wear, 100)
-            POSTS[post_id]['brush_wear'] = wear
-            brush_wear.labels(post_id=post_id).set(wear)
-
+        # Износ щёток (только робот post_2)
+        post_id = 'post_2'
+        POSTS[post_id]['brush_wear'] += random.uniform(0.1, 0.8)
+        POSTS[post_id]['brush_wear'] = min(POSTS[post_id]['brush_wear'], 100)
+        brush_wear.labels(post_id=post_id).set(POSTS[post_id]['brush_wear'])
         
         # ========== ФИНАНСОВЫЕ ==========
         if random.random() < 0.3:  # сессия завершилась
@@ -152,37 +151,34 @@ def simulate_metrics():
             avg_check.set(revenue_state / max(services_count, 1))
         
         # ========== НАДЁЖНОСТЬ ==========
-        # Uptime постов
         for post_id in POSTS:
-            uptime_seconds = random.randint(3500, 3600)  # 97-100%
-            post_uptime_total.labels(post_id=post_id).inc(uptime_seconds)
-            post_total_seconds.labels(post_id=post_id).inc(3600)
             post_uptime.labels(post_id=post_id).set(random.uniform(97, 100))
-            post_uptime.labels(post_id=post_id).set(uptime_percent)
-        
-        # MTTR/MTBF - упрощённо
         mttr_seconds.set(random.uniform(300, 1800))
         mtbf_hours.set(random.uniform(24, 168))
         monitoring_availability.set(random.uniform(99.5, 100))
         
         # ========== ЗАПИСЬ В БД ==========
-        # Метрики в БД (пример для нескольких типов)
-        # В блоке записи в БД замени:
-        db.log_metric(1, 1, queue_length_self._value.get())  # post_1
-        db.log_metric(2, 2, session_duration.labels(post_id='post_2')._value.get())  # post_2
-
+        try:
+            db.log_metric(1, 1, queue_length_self._value.get())  # post_1, queue_length
+            db.log_metric(2, 2, session_duration.labels(post_id='post_2')._value.get())  # post_2, session_duration
+        except Exception as e:
+            print(f"DB log error: {e}")
         
-        # Случайные инциденты
-        if random.random() < 0.02:  # 2% шанс
+        # Случайные инциденты (2% шанс)
+        if random.random() < 0.02:
             incident_post = random.choice(list(POSTS.keys()))
             description = f"Technical failure on {incident_post}"
-            db.log_incident(post_id=1 if 'post_1' in incident_post else 2, description=description)
+            post_num = 1 if incident_post == 'post_1' else 2
+            try:
+                db.log_incident(post_num, description)
+            except Exception as e:
+                print(f"Incident log error: {e}")
         
         time.sleep(15)
 
 if __name__ == "__main__":
     start_http_server(8000)
-    print("Carwash Digital Twin Simulator started on port 8000")
-    print("Metrics available at http://localhost:8000/metrics")
+    print("Carwash Digital Twin Simulator (2 posts) started on port 8000")
+    print("Metrics: http://localhost:8000/metrics")
     atexit.register(lambda: print("Simulator stopped"))
     simulate_metrics()
