@@ -135,12 +135,13 @@ def simulate_metrics():
         pump_temperature.set(random.uniform(35, 65))
         
         # Износ щёток (только роботы)
-        for post_id in ['post_3', 'post_4']:
-            wear = POSTS[post_id].get('brush_wear', random.uniform(5, 80))
+        for post_id in ['post_2']:  # Только роботизированный пост_2
+            wear = POSTS[post_id]['brush_wear']
             wear += random.uniform(0.1, 0.8)
             wear = min(wear, 100)
             POSTS[post_id]['brush_wear'] = wear
             brush_wear.labels(post_id=post_id).set(wear)
+
         
         # ========== ФИНАНСОВЫЕ ==========
         if random.random() < 0.3:  # сессия завершилась
@@ -156,8 +157,7 @@ def simulate_metrics():
             uptime_seconds = random.randint(3500, 3600)  # 97-100%
             post_uptime_total.labels(post_id=post_id).inc(uptime_seconds)
             post_total_seconds.labels(post_id=post_id).inc(3600)
-            uptime_percent = (post_uptime_total.labels(post_id=post_id)._value.get() / 
-                            post_total_seconds.labels(post_id=post_id)._value.get()) * 100
+            post_uptime.labels(post_id=post_id).set(random.uniform(97, 100))
             post_uptime.labels(post_id=post_id).set(uptime_percent)
         
         # MTTR/MTBF - упрощённо
@@ -176,7 +176,7 @@ def simulate_metrics():
         if random.random() < 0.02:  # 2% шанс
             incident_post = random.choice(list(POSTS.keys()))
             description = f"Technical failure on {incident_post}"
-            db.log_incident(post_id=1 if 'post_1' in incident_post else 3, description=description)
+            db.log_incident(post_id=1 if 'post_1' in incident_post else 2, description=description)
         
         time.sleep(15)
 
