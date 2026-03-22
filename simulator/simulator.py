@@ -40,10 +40,26 @@ mttr_seconds = Gauge('carwash_mttr_seconds', 'Mean Time To Recovery seconds')
 mtbf_hours = Gauge('carwash_mtbf_hours', 'Mean Time Between Failures hours')
 monitoring_availability = Gauge('carwash_monitoring_availability_percent', 'Monitoring system availability %')
 
-# ========== 2 ПОСТА ==========
+# ========== СОСТОЯНИЕ ПОСТОВ ==========
+# broken_cycles_left — сколько циклов пост ещё будет сломан (0 = работает)
 POSTS = {
-    'post_1': {'type': 'self_service', 'brush_wear': 20.0},
-    'post_2': {'type': 'robot', 'brush_wear': 35.0}
+    'post_1': {'type': 'self_service', 'brush_wear': 20.0, 'broken_cycles_left': 0},
+    'post_2': {'type': 'robot',        'brush_wear': 35.0, 'broken_cycles_left': 0}
+}
+
+# ========== СОСТОЯНИЕ ХИМИИ ==========
+# Химия постепенно расходуется и пополняется при достижении минимума
+CHEMICALS = {
+    'shampoo': 85.0,
+    'wax':     70.0,
+    'rinse':   90.0,
+}
+
+# Скорость расхода за цикл на один активный пост
+CHEMICAL_CONSUMPTION = {
+    'shampoo': 0.8,
+    'wax':     0.5,
+    'rinse':   0.6,
 }
 
 class DatabaseManager:
@@ -110,16 +126,39 @@ def simulate_metrics():
         queue_length_self.set(q_self)
         queue_length_robot.set(q_robot)
 
-        # Статус поста зависит от очереди
+        # Статус поста зависит от очереди и состояния поломки
         for post_id, post_info in POSTS.items():
             queue = q_self if post_info['type'] == 'self_service' else q_robot
 
-            if queue > 0:
-                # Есть очередь — пост точно занят (или сломан, но тогда очередь не растёт)
-                status = random.choices([1, 2], weights=[90, 10])[0]
+            if post_info['broken_cycles_left'] > 0:
+                # Пост сломан — остаётся сломанным, уменьшаем счётчик
+                status = 2
+                post_info['broken_cycles_left'] -= 1
+                if post_info['broken_cycles_left'] == 0:
+                    print(f"🔧 {post_id} восстановлен после ремонта")
+
+            elif queue > 0:
+                # Есть очередь — пост занят, с малым шансом сломаться
+                status = random.choices([1, 2], weights=[95, 5])[0]
+                if status == 2:
+                    # Поломка — пост будет сломан 4-20 циклов (1-5 минут)
+                    post_info['broken_cycles_left'] = random.randint(4, 20)
+                    print(f"❌ {post_id} сломался, ремонт займёт {post_info['broken_cycles_left']} циклов")
+                    db.log_incident(
+                        1 if post_id == 'post_1' else 2,
+                        f"Equipment failure on {post_id}"
+                    )
+
             else:
-                # Очереди нет — пост может быть свободен, занят или сломан
-                status = random.choices([0, 1, 2], weights=[50, 40, 10])[0]
+                # Очереди нет — пост свободен или занят, редко ломается
+                status = random.choices([0, 1, 2], weights=[50, 45, 5])[0]
+                if status == 2:
+                    post_info['broken_cycles_left'] = random.randint(4, 20)
+                    print(f"❌ {post_id} сломался, ремонт займёт {post_info['broken_cycles_left']} циклов")
+                    db.log_incident(
+                        1 if post_id == 'post_1' else 2,
+                        f"Equipment failure on {post_id}"
+                    )
 
             post_status.labels(post_id=post_id).set(status)
 
@@ -139,18 +178,36 @@ def simulate_metrics():
 
         # ========== ТЕХНИЧЕСКИЕ МЕТРИКИ ==========
 
-        # Химия
-        chemical_level.labels(chemical_type='shampoo').set(random.uniform(10, 100))
-        chemical_level.labels(chemical_type='wax').set(random.uniform(20, 95))
-        chemical_level.labels(chemical_type='rinse').set(random.uniform(15, 90))
+        # Химия — постепенный расход, пополнение при достижении минимума
+        active_posts = sum(
+            1 for p in POSTS.values()
+            if p['broken_cycles_left'] == 0
+        )
+        for chem in CHEMICALS:
+            consumption = CHEMICAL_CONSUMPTION[chem] * active_posts * random.uniform(0.5, 1.5)
+            CHEMICALS[chem] = max(0.0, CHEMICALS[chem] - consumption)
+
+            # Пополнение при достижении 15% — имитация заправки
+            if CHEMICALS[chem] <= 15.0:
+                CHEMICALS[chem] = random.uniform(85.0, 100.0)
+                print(f"🧴 Химия '{chem}' пополнена до {CHEMICALS[chem]:.1f}%")
+
+            chemical_level.labels(chemical_type=chem).set(CHEMICALS[chem])
 
         # Давление воды, температура насоса (общие для всей мойки)
         water_pressure.set(random.uniform(100, 160))
         pump_temperature.set(random.uniform(35, 65))
 
         # Износ щёток (только робот post_2)
-        POSTS['post_2']['brush_wear'] += random.uniform(0.1, 0.8)
-        POSTS['post_2']['brush_wear'] = min(POSTS['post_2']['brush_wear'], 100)
+        # Расходуется только если пост работает
+        if POSTS['post_2']['broken_cycles_left'] == 0:
+            POSTS['post_2']['brush_wear'] += random.uniform(0.1, 0.8)
+
+        # При достижении 100% — имитация замены щёток
+        if POSTS['post_2']['brush_wear'] >= 100.0:
+            POSTS['post_2']['brush_wear'] = random.uniform(8.0, 15.0)
+            print("🔧 Щётки поста 2 заменены")
+
         brush_wear.labels(post_id='post_2').set(POSTS['post_2']['brush_wear'])
 
         # ========== ФИНАНСОВЫЕ ==========
@@ -170,20 +227,10 @@ def simulate_metrics():
 
         # ========== ЗАПИСЬ В БД ==========
         try:
-            db.log_metric(1, 1, queue_length_self._value.get())   # post_1, queue_length
-            db.log_metric(2, 2, session_duration.labels(post_id='post_2')._value.get())  # post_2, session_duration
+            db.log_metric(1, 1, queue_length_self._value.get())
+            db.log_metric(2, 2, session_duration.labels(post_id='post_2')._value.get())
         except Exception as e:
             print(f"DB log error: {e}")
-
-        # Случайные инциденты (2% шанс)
-        if random.random() < 0.02:
-            incident_post = random.choice(list(POSTS.keys()))
-            description = f"Technical failure on {incident_post}"
-            post_num = 1 if incident_post == 'post_1' else 2
-            try:
-                db.log_incident(post_num, description)
-            except Exception as e:
-                print(f"Incident log error: {e}")
 
         time.sleep(15)
 
