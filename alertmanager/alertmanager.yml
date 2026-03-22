@@ -15,7 +15,7 @@ receivers:
         chat_id: 667953047
         message: |
           🚨 *{{ .Status | toUpper }}* — {{ .CommonLabels.alertname }}
-          
+
           {{ range .Alerts }}
           📍 *Пост:* {{ .Labels.post_id }}
           📝 {{ .Annotations.description }}

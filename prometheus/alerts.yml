@@ -36,7 +36,7 @@ groups:
         labels:
           severity: warning
         annotations:
-          description: "Износ щёток поста 2: {{ $value | printf \"%.1f\" }}%"
+          description: "Износ щёток поста 2 достиг критического уровня (100%)"
 
       # Низкий уровень химии
       - alert: ChemicalLevelLow
