@@ -14,11 +14,11 @@ receivers:
       - bot_token: '8710539229:AAH5TUSkniqJBh92KocUceTMfGBubS4EUZ4'
         chat_id: 667953047
         message: |
-          🚨 *{{ .Status | toUpper }}* — {{ .CommonLabels.alertname }}
+          🚨 {{ .Status | toUpper }} — {{ .CommonLabels.alertname }}
 
           {{ range .Alerts }}
-          📍 *Пост:* {{ .Labels.post_id }}
-          📝 {{ .Annotations.description }}
-          🕐 {{ .StartsAt.Format "15:04:05" }}
+          Пост: {{ .Labels.post_id }}
+          {{ .Annotations.description }}
+          Время: {{ .StartsAt.Format "15:04:05" }}
           {{ end }}
-        parse_mode: 'Markdown'
+        parse_mode: ''
