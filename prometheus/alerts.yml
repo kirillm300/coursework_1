@@ -1,0 +1,57 @@
+groups:
+  - name: carwash_alerts
+    rules:
+
+      # Пост сломан
+      - alert: PostBroken
+        expr: carwash_post_status == 2
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          description: "Пост {{ $labels.post_id }} не работает"
+
+      # Очередь самообслуживания переполнена
+      - alert: QueueOverloadSelfService
+        expr: carwash_queue_length_self_service >= 5
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          description: "Очередь самообслуживания: {{ $value }} машин"
+
+      # Очередь робота переполнена
+      - alert: QueueOverloadRobot
+        expr: carwash_queue_length_robot >= 4
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          description: "Очередь робота: {{ $value }} машин"
+
+      # Критический износ щёток
+      - alert: BrushWearCritical
+        expr: carwash_brush_wear_percent{post_id="post_2"} >= 80
+        for: 0s
+        labels:
+          severity: warning
+        annotations:
+          description: "Износ щёток поста 2: {{ $value | printf \"%.1f\" }}%"
+
+      # Низкий уровень химии
+      - alert: ChemicalLevelLow
+        expr: carwash_chemical_level_percent < 20
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          description: "Низкий уровень химии '{{ $labels.chemical_type }}': {{ $value | printf \"%.0f\" }}%"
+
+      # Высокая температура насоса
+      - alert: PumpTemperatureHigh
+        expr: carwash_pump_temperature_celsius >= 60
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          description: "Температура насоса: {{ $value | printf \"%.1f\" }}°C"
