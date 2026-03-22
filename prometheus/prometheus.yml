@@ -11,7 +11,7 @@ scrape_configs:
 rule_files:
   - /etc/prometheus/alerts.yml
 
-# Адрес Alertmanager
+# Адрес AlertManager
 alerting:
   alertmanagers:
     - static_configs:
