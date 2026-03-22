@@ -6,3 +6,14 @@ scrape_configs:
   - job_name: "carwash-simulator"
     static_configs:
       - targets: ["simulator:8000"]
+
+# Путь к файлу с правилами
+rule_files:
+  - /etc/prometheus/alerts.yml
+
+# Адрес Alertmanager
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - alertmanager:9093
