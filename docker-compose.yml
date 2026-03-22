@@ -77,6 +77,8 @@ services:
         - "9093:9093"
       volumes:
         - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      environment:
+        - TZ=Asia/Yekaterinburg 
       networks:
         - carwash-net
       restart: unless-stopped
