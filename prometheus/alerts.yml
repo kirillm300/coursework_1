@@ -40,7 +40,7 @@ groups:
 
       # Низкий уровень химии
       - alert: ChemicalLevelLow
-        expr: carwash_chemical_level_percent < 20
+        expr: carwash_chemical_level_percent < 200
         for: 1m
         labels:
           severity: warning

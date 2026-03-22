@@ -11,8 +11,8 @@ route:
 receivers:
   - name: 'telegram'
     telegram_configs:
-      - bot_token: '7123456789:AAF...'   # ← твой токен
-        chat_id: 123456789               # ← твой chat_id
+      - bot_token: '8710539229:AAH5TUSkniqJBh92KocUceTMfGBubS4EUZ4'
+        chat_id: 667953047
         message: |
           🚨 *{{ .Status | toUpper }}* — {{ .CommonLabels.alertname }}
           
