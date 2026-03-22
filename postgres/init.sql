@@ -84,12 +84,10 @@ CREATE TABLE IF NOT EXISTS incident (
 -- Начальные данные
 -- =====================
 
--- Посты
+-- Посты (2 поста: самообслуживание и робот)
 INSERT INTO post (name, post_type, description) VALUES
-    ('Пост 1', 'self_service', 'Пост самообслуживания №1'),
-    ('Пост 2', 'self_service', 'Пост самообслуживания №2'),
-    ('Пост 3', 'robot',        'Роботизированный пост №1'),
-    ('Пост 4', 'robot',        'Роботизированный пост №2');
+    ('Пост 1', 'self_service', 'Пост самообслуживания'),
+    ('Пост 2', 'robot',        'Роботизированный пост');
 
 -- Услуги
 INSERT INTO service (name, post_type, description) VALUES
@@ -100,10 +98,8 @@ INSERT INTO service (name, post_type, description) VALUES
 
 -- Связь постов и услуг
 INSERT INTO post_service (post_id, service_id) VALUES
-    (1, 1), (1, 2),
-    (2, 1), (2, 2),
-    (3, 3), (3, 4),
-    (4, 3), (4, 4);
+    (1, 1), (1, 2),   -- Пост 1 (self_service): базовая мойка + мойка с пеной
+    (2, 3), (2, 4);   -- Пост 2 (robot): стандартная мойка + мойка с воском
 
 -- Тарифы
 INSERT INTO tariff (service_id, price, unit, valid_from) VALUES
